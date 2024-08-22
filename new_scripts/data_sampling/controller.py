@@ -20,13 +20,13 @@ def custom_format(obj):
 if __name__ == '__main__':
 
     dict_path = "../../data/sampled_data.json"
-    current_name = 1 # index
+    current_name = 1953 # index
     dictionary = {}
 
-    for idx, game in enumerate(GAMES[:10]) :
+    for idx, game in enumerate(GAMES[5:10]) :
         print(f'-----  Game {idx+1}: {game} -----\n')
         demo = IPHYRE(game, fps=60) # by default, the games are from PARAS 
-        tree = TreeSearch(demo, init_idx=current_name)
+        tree = TreeSearch(demo, init_idx=current_name, timestep= 20 / 60)
         tree.build_tree()
         dictionary.update(tree.output())
         current_name = tree.current_idx + 1
