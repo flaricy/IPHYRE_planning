@@ -19,6 +19,7 @@ class IPHYRE():
         self.HEIGHT, self.WIDTH = 600, 600
         self.FPS = fps
         self.timestep = 1 / self.FPS 
+        self.current_time = 0
         self.max_time = 15
         self.max_obj_num = MAX_OBJ_NUM
         self.max_eli_obj_num = MAX_ELI_OBJ_NUM
@@ -51,6 +52,11 @@ class IPHYRE():
         self.spring = None
         if 'spring' in self.PARAS[self.game].keys():
             self.spring = self.PARAS[self.game]['spring']
+       
+    def check_terminate(self):
+        if self.examine_success() or self.current_time > self.max_time:
+            return True
+        return False
     
     def add_constraint_to_body(self, type, index, line, cnt, dic):
         if type == 'joint':
@@ -284,11 +290,18 @@ class IPHYRE():
                 all_property[index] = self.get_property_full(body, i, self.shape[i]) # each item either with length 11 (for block) or 9 (for ball)
         return all_property
 
-    def get_action_space_by_property(self, reset=True):
+    def object_idx_to_pos(self, idx):
+        actions = self.get_action_space_by_property()
+        for i, pos_x, pos_y in actions:
+            if i == idx:
+                return pos_x, pos_y
+        raise ValueError('idx not found in action list')
+    
+    def get_action_space_by_property(self):
         '''
         In the properties array, return the list of (idx, pos_x, pos_y) that can be eliminated, won't return empty action, won't pad.
         '''
-        if reset: self.reset()
+
         actions = []
         all_property = self.get_all_property()
         for idx, property in enumerate(all_property):
@@ -337,6 +350,8 @@ class IPHYRE():
         self.eli_mask = [i for i in range(len(self.space.bodies))]
         self.dynamic = deepcopy(self.PARAS[self.game]['dynamic'])
 
+        self.current_time = 0
+
         if use_images:
             self.space.debug_draw(self.draw_options)
             pygame.display.flip()
@@ -347,14 +362,18 @@ class IPHYRE():
         else:
             return self.get_all_property()
 
-    def step(self, pos, use_images=False): # pos: the position to be eliminated
+    def step(self, pos, use_images=False, timestep = None): # pos: the position to be eliminated
+
+        if timestep is None:
+            timestep = self.timestep
+
         reward = self.step_reward
         done = False
         if pos == [0., 0.]:
-            self.space.step(self.timestep)
+            self.space.step(timestep)
         else:
             index = self.eliminate(pos)
-            self.space.step(self.timestep)
+            self.space.step(timestep)
             if index != -1:
                 reward += self.eli_reward
 
@@ -362,6 +381,8 @@ class IPHYRE():
             reward += self.success_reward
             done = True
         
+        self.current_time += timestep
+
         if use_images:
             self.screen.fill((255, 255, 255))
             self.space.debug_draw(self.draw_options)
@@ -379,6 +400,7 @@ class IPHYRE():
         '''
         copied_space = deepcopy(self.space)
         copied_space.step(self.timestep)
+        copied_space.step(self.timestep)
 
         current_frame_properties = self.get_all_property()
 
@@ -388,7 +410,9 @@ class IPHYRE():
             next_frame_properties[index] = self.get_property(body, i, self.shape[i])
         
         for i in range(len(current_frame_properties)):
-            if np.linalg.norm(current_frame_properties[i] - next_frame_properties[i]) > 1e-5:
+            diff = np.linalg.norm(current_frame_properties[i] - next_frame_properties[i])
+            #print(f"ori: {current_frame_properties[i]}, next: {next_frame_properties[i]}, diff: {diff}")
+            if diff > 1e-8:
                 return False
 
         return True
@@ -443,12 +467,16 @@ class IPHYRE():
         # pygame.quit()
 
 
-    def simulate(self, action=[]):
+    def simulate(self, action=[], use_current_time = False):
         '''
         The action consists of many tuples (x, y, t), indicating clicking position (x, y) at time t.
         '''
         action.sort(key=lambda a: a[-1])
         step, valid_step, time_count = 0, 0, 0
+
+        # !
+        if use_current_time: time_count = self.current_time
+
         total_step = len(action)
         while time_count < self.max_time:
             if step < total_step:
@@ -570,10 +598,15 @@ class IPHYRE():
                             if continue_to_next_frame :
                                 print(f"Object {self.eli_mask[i]}: {properties[self.eli_mask[i]]}")
 
-                    ## check restore_scene()
+                    ## print actions 
+                    if continue_to_next_frame :
+                        actions = self.get_action_space_by_property()
+                        print(f"actions:\n{actions}")
+
+                    ## check restore_scene() / print states
                     if continue_to_next_frame :
                         states = self.restore_scene()
-                        print(f"states:\n{states}")
+                        print(f"states:\n{states}\n")
 
                     pygame.display.flip()
                     self.clock.tick(self.FPS)
